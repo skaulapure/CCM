@@ -6,13 +6,11 @@ import numpy as np
 import math
 
 def sol(alpha):
-
     beta = 1 - alpha
 
     return beta
 
 def calc(alpha, gamma, beta, df):
-
         df.log_returns = df.Future.pct_change()
 
         df.AtM_Var = df['AtM']**2
@@ -80,7 +78,6 @@ def main():
     beta = sol(alpha)
 
     calc (alpha, gamma, beta, df)
-
 
     return
 
