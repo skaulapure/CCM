@@ -55,8 +55,8 @@ def sol(alpha,gamma,df):
         df.abs_error = df.error.abs()
 
         df.abs_vol_error = df.vol_error.abs()
-    print (df['Abs_Error'])
-
+        print (df['Abs_Error'])
+        return
     return
 
     calc(df)
