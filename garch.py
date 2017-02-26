@@ -13,10 +13,6 @@ def sol(alpha):
 
 def calc(alpha, gamma, beta, df):
 
-        df.set_index('Date', inplace=True)
-
-        df = df.loc['2009-06-15':'2014-12-31']
-
         df.log_returns = df.Future.pct_change()
 
         df.AtM_Var = df['AtM']**2
@@ -59,7 +55,7 @@ def calc(alpha, gamma, beta, df):
         df.abs_error = df.error.abs()
 
         df.abs_vol_error = df.vol_error.abs()
-        print (df['Abs_Error'])
+        print (df.abs_error)
         return
 
 
@@ -73,6 +69,11 @@ def main():
     df = pd.DataFrame(data, columns=['Date', 'Future', 'AtM', 'log_returns', 'AtM_Var', 'Norm_AtM_Vol',
                                      'stocastic_factor', 'simulated_var', 'simulated_AtMVol', 'simulated_futures',
                                      'simulated_log_returns', 'error', 'abs_error', 'vol_error', 'abs_vol_error'])
+
+    df.set_index('Date', inplace=True)
+
+    df = df.loc['2009-06-15':'2014-12-31']
+
     gamma = 0.0003343
     alpha = 0.0072841
 
