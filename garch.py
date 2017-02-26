@@ -5,9 +5,9 @@ import pandas as pd
 import numpy as np
 import math
 
-def sol(alpha,gamma):
+def sol(alpha,gamma,df):
     beta = 1 - alpha
-    def calc():
+    def calc(df):
 
         df.set_index('Date', inplace=True)
 
@@ -55,8 +55,11 @@ def sol(alpha,gamma):
         df.abs_error = df.error.abs()
 
         df.abs_vol_error = df.vol_error.abs()
-#   print (df['Abs_Error'])
-
+    print (df['Abs_Error'])
+    
+    return
+    
+    calc(df)
 def main():
     connection = MongoClient()
 
