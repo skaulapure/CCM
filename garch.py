@@ -5,9 +5,13 @@ import pandas as pd
 import numpy as np
 import math
 
-def sol(alpha,gamma,df):
+def sol(alpha):
+
     beta = 1 - alpha
-    def calc(df):
+
+    return beta
+
+def calc(alpha, gamma, beta, df):
 
         df.set_index('Date', inplace=True)
 
@@ -57,9 +61,8 @@ def sol(alpha,gamma,df):
         df.abs_vol_error = df.vol_error.abs()
         print (df['Abs_Error'])
         return
-    return
 
-    calc(df)
+
 def main():
     connection = MongoClient()
 
@@ -70,9 +73,14 @@ def main():
     df = pd.DataFrame(data, columns=['Date', 'Future', 'AtM', 'log_returns', 'AtM_Var', 'Norm_AtM_Vol',
                                      'stocastic_factor', 'simulated_var', 'simulated_AtMVol', 'simulated_futures',
                                      'simulated_log_returns', 'error', 'abs_error', 'vol_error', 'abs_vol_error'])
+    gamma = 0.0003343
+    alpha = 0.0072841
+
+    beta = sol(alpha)
+
+    calc (alpha, gamma, beta, df)
 
 
-    sol(0.0072841,0.0003343,df)
     return
 
 if __name__ == "__main__":
