@@ -56,9 +56,9 @@ def sol(alpha,gamma,df):
 
         df.abs_vol_error = df.vol_error.abs()
     print (df['Abs_Error'])
-    
+
     return
-    
+
     calc(df)
 def main():
     connection = MongoClient()
@@ -72,3 +72,8 @@ def main():
                                      'simulated_log_returns', 'error', 'abs_error', 'vol_error', 'abs_vol_error'])
 
 
+    sol(0.0072841,0.0003343,df)
+    return
+
+if __name__ == "__main__":
+    main()
