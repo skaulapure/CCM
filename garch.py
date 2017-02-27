@@ -4,13 +4,15 @@ from pymongo import MongoClient
 import pandas as pd
 import numpy as np
 import math
+import scipy.optimize as sci
 
-def sol(alpha):
-    beta = 1 - alpha
+#def sol(alpha):
+ #   beta = 1 - alpha
 
-    return beta
+  #  return beta
 
-def calc(alpha, gamma, beta, df):
+def calc(alpha, gamma, df):
+
         df.log_returns = df.Future.pct_change()
 
         df.AtM_Var = df['AtM']**2
@@ -34,7 +36,8 @@ def calc(alpha, gamma, beta, df):
 #gamma = 0.0003343
 #alpha = 0.0072841
 #beta = 0.9927159
-
+        beta = 1 - alpha
+        
         for i in range(2, len(df.index)):
             df.simulated_var[i] = i
 
@@ -72,12 +75,13 @@ def main():
 
     df = df.loc['2009-06-15':'2014-12-31']
 
-    gamma = 0.0003343
-    alpha = 0.0072841
+   # gamma = 0.0003343
+    #alpha = 0.0072841
 
-    beta = sol(alpha)
-
-    calc (alpha, gamma, beta, df)
+    #beta = sol(alpha)
+    sci.fmin(calc, 0,(0,df) )
+    #beta = sol(alpha)
+#    calc (alpha, gamma, beta, df)
 
     return
 
