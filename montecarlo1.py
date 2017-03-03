@@ -13,16 +13,20 @@ def generate_asset_price(S,v,r,T):
 
 def simulation_array(simulations, duration, S, v, r, T):
     k = np.zeros(shape=(simulations, duration))
+    s = S
     for i in range(0, simulations):
-        for j in range(0, duration):
+        k[i,0] = s
+        for j in range(1, duration):
+            S=k[i,j-1]
             asset_price = generate_asset_price(S, v, r, T)
             k[i, j] = (asset_price)
+    #print (k[3,0])
     return k
 
 
 def simu_plot(k):
     plt.figure(1)
-    sns.kdeplot(k[:, -1])
+    sns.kdeplot(k[-1, :])
 
     plt.figure(2)
     for i in k:
@@ -34,7 +38,7 @@ def main():
     S = 57.30 # underlying price
     v = 0.20 # vol of 20%
     r = 0.0015 # rate of 0.15%c
-    simulations = 10000
+    simulations = 100
     today = pd.datetime.today()
     end_date = today
     start_date = today - BDay(20)
