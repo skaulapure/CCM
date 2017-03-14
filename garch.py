@@ -51,15 +51,16 @@ def mean_stochastic_factor(df, df1):
     return df, df1
 
 
-def calc(guess, df):
+def calc(guess, df, a): #a = indicator for observation(1) or backtesting(0)
+
     gamma = guess[0]
     alpha = guess[1]
     log_mean = df.log_returns.mean()
 
-    var = df.AtM_Var[1]
-    atm_vol = df.AtM[1]
-    future = df.Future[1]
-    log_return = df.log_returns[1]
+    var = df.AtM_Var[a]
+    atm_vol = df.AtM[a]
+    future = df.Future[a]
+    log_return = df.log_returns[a]
 
     simulated_var = [var, ]
     simulated_future = [future, ]
@@ -68,7 +69,7 @@ def calc(guess, df):
 
     garch = GARCH(gamma, alpha)
 
-    for stochastic in df.stochastic_factor[2:]:
+    for stochastic in df.stochastic_factor[a+1:]:
         var = garch.step(log_return, var)
         atm_vol = np.sqrt(var)
         log_return = log_mean + stochastic * atm_vol/16
@@ -78,31 +79,32 @@ def calc(guess, df):
         simulated_atm_vol.append(atm_vol)
         simulated_log_return.append(log_return)
 
-    error = np.array([i - j for i, j in zip(df.log_returns[1:], simulated_log_return)])
-    vol_error = np.array([i - j for i, j in zip(df.AtM[1:], simulated_atm_vol)])
+    error = np.array([i - j for i, j in zip(df.log_returns[a:], simulated_log_return)])
+    vol_error = np.array([i - j for i, j in zip(df.AtM[a:], simulated_atm_vol)])
     abs_error = abs(error)
     abs_vol_error = abs(vol_error)
 
-    df.simulated_futures[1:] = simulated_future
-    df.simulated_AtMVol[1:] = simulated_atm_vol
-    df.simulated_log_returns[1:] = simulated_log_return
-    df.simulated_var[1:] = simulated_var
+    df.simulated_futures[a:] = simulated_future
+    df.simulated_AtMVol[a:] = simulated_atm_vol
+    df.simulated_log_returns[a:] = simulated_log_return
+    df.simulated_var[a:] = simulated_var
 
-    df.error[1:] = error
-    df.abs_error[1:] = abs_error
-    df.vol_error[1:] = vol_error
-    df.abs_vol_error[1:] = abs_vol_error
+    df.error[a:] = error
+    df.abs_error[a:] = abs_error
+    df.vol_error[a:] = vol_error
+    df.abs_vol_error[a:] = abs_vol_error
+
     df.plot(y = 'error')
     #df.plot(x=df.Date, y='error')#, y='vol_error')
     return df, abs_error.mean()
 
 
 def real_stochastic(df1):
-    
+
     factor = [random.random() for i in range(1, len(df1.index))]
     factor_inv = np.array([norm.ppf(factor[i]) for i in range(0, len(factor))])
     df1.stimulated_stochastic_factor[1:] = factor_inv
-    
+
     return df1
 
 def main():
@@ -114,17 +116,20 @@ def main():
 
     df, df1 = mean_stochastic_factor(df, df1)
 
-    df1 = real_stochastic(df1)
+    #df1 = real_stochastic(df1)
 
     initial_guess = np.array([0, 0])
 
     cons = [{'type': 'ineq', 'fun': lambda x: x - 0},
             {'type': 'ineq', 'fun': lambda x: x - 0}]
-    df, result = optimize.minimize(calc, initial_guess, (df,), constraints=cons)
-    df.plot(y='error')
-    return result
+    df, result = optimize.minimize(calc, initial_guess, (df,), 1, constraints=cons)
+    #df.plot(y='error')
+    df1, back_test = calc(result, df1, 0)
+
+
+    return result, back_test
 
 
 if __name__ == '__main__':
-    sols = main()
-    print(sols)
+    sols, backsols = main()
+    print(sols, backsols)
