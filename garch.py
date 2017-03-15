@@ -94,9 +94,10 @@ def calc(guess, df, a): #a = indicator for observation(1) or backtesting(0)
     df.vol_error[a:] = vol_error
     df.abs_vol_error[a:] = abs_vol_error
 
+    abs_mean = df.abs_error.mean()
     df.plot(y = 'error')
     #df.plot(x=df.Date, y='error')#, y='vol_error')
-    return df, abs_error.mean()
+    return abs_mean, df
 
 
 def real_stochastic(df1):
@@ -122,10 +123,11 @@ def main():
 
     cons = [{'type': 'ineq', 'fun': lambda x: x - 0},
             {'type': 'ineq', 'fun': lambda x: x - 0}]
-    df, result = optimize.minimize(calc, initial_guess, (df,), 1, constraints=cons)
+
+    result, df = optimize.minimize(calc, initial_guess, args=(df, 1, ), constraints=cons)
+
     #df.plot(y='error')
     df1, back_test = calc(result, df1, 0)
-
 
     return result, back_test
 
