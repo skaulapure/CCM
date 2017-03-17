@@ -91,10 +91,20 @@ def simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K,
         S, v = cal(var, future, log_return, atm_vol, log_mean)
         fut.append(S)
         vol.append(v)
-        c.append(BlackScholes('c', S, K, 100, r, d, v))
-        p.append(BlackScholes('p', S, K, 100, r, d, v))
+        c.append(BlackScholes('c', S, K, 100/252.0, r, d, v))
+        p.append(BlackScholes('p', S, K, 100/252.0, r, d, v))
         straddle.append(c[i] + p[i])
 
+    df_columns = ['Futures', 'Vol', 'Call', 'Put', 'Straddle']
+    df_fore = pd.DataFrame(np.zeros(shape=(simulations, 5)), columns=df_columns)
+
+    df_fore.Futures[0:] = fut
+    df_fore.Vol[0:] = vol
+    df_fore.Call[0:] = c
+    df_fore.Put[0:] = p
+    df_fore.Straddle[0:] = straddle
+
+    df_fore.to_csv('futures_options.csv')
     plot(fut, vol, c, p, straddle)
 
     return
@@ -109,7 +119,7 @@ def ext():
     atm_vol = df_fore.AtM[0]
     future = df_fore.Futures[0]  # Stock price
     K = df_fore.Futures[0]  # Strike price
-
+    print(K)
     log_mean = df_fore.log_returns.mean()
     return var, future, log_return, atm_vol, log_mean, K
 
@@ -120,7 +130,6 @@ def main():
     simulations = 100
     var, future, log_return, atm_vol, log_mean, K = ext()
     simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K, r, d)
-    print('Done')
     plt.show()
 
     return
