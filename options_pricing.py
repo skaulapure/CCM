@@ -4,7 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import random
-import seaborn as sns
 
 
 # Pricing engine module that calculates Option prices and Greeks with black scholes
@@ -46,9 +45,9 @@ def cal(var, future, log_return, atm_vol, log_mean):
     simulated_log_return = [log_return, ]
     simulated_atm_vol = [atm_vol, ]
 
-    T1 = 100
+    t1 = 100
 
-    stoc_factors = simulated_stochastic(T1)
+    stoc_factors = simulated_stochastic(t1)
 
     for stochastic in stoc_factors:
         var = gamma + alpha * log_return ** 2 + beta * var
@@ -66,9 +65,9 @@ def cal(var, future, log_return, atm_vol, log_mean):
     return future, atm_vol
 
 
-def plot(S, v, c, p, straddle):
+def plot(s, v, c, p, straddle):
     plt.figure('Futures')
-    plt.hist(S)
+    plt.hist(s, facecolor='green')
     plt.figure('Vol')
     plt.hist(v)
     plt.figure('Call')
@@ -101,23 +100,27 @@ def simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K,
     return
 
 
-def main():
-    file_name = 'futures.xlsx'
+def ext():
+    file_name = 'futures1.xlsx'
     df_fore = pd.read_excel(file_name)
-
-    r = 0.0075  # Riskfree interest rate
-    d = 0.00  # Dividend yield
 
     var = df_fore.Var[0]  # Volatility
     log_return = df_fore.log_returns[0]
     atm_vol = df_fore.AtM[0]
-    future = df_fore.Futures[0] # Stock price
-    K = df_fore.Futures[0] # Strike price
+    future = df_fore.Futures[0]  # Stock price
+    K = df_fore.Futures[0]  # Strike price
 
     log_mean = df_fore.log_returns.mean()
-    simulations = 10
+    return var, future, log_return, atm_vol, log_mean, K
 
+
+def main():
+    r = 0.0075  # Riskfree interest rate
+    d = 0.00  # Dividend yield
+    simulations = 100
+    var, future, log_return, atm_vol, log_mean, K = ext()
     simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K, r, d)
+    print('Done')
     plt.show()
 
     return
