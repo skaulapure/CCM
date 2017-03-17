@@ -3,7 +3,8 @@ import numpy as np
 from scipy import optimize
 import random
 from scipy.stats import norm
-#import matplotlib as plt
+import xlwings as xl
+import matplotlib.pyplot as plt
 #import seaborn as sns
 from pymongo import MongoClient
 
@@ -30,6 +31,7 @@ class StochasticProcess(object):
         f1 = self.f0*np.exp(self.mu + stochastic*sigma/np.sqrt(252))
         self.f0 = f1
         return f1
+
 
 def data_call(start_date, end_date):
     connection = MongoClient()
@@ -61,7 +63,7 @@ def data_call(start_date, end_date):
 #     return df, df1
 
 
-def calc(guess, df, log_mean, stochastic_factors): #a = indicator for observation(1) or backtesting(0)
+def calc(guess, df, log_mean, stochastic_factors, indicator): #a = indicator for observation(1) or backtesting(0)
     assert len(df) > 1
     gamma = guess[0]
     alpha = guess[1]
@@ -90,30 +92,51 @@ def calc(guess, df, log_mean, stochastic_factors): #a = indicator for observatio
         simulated_atm_vol.append(atm_vol)
         simulated_log_return.append(log_return)
 
-    error = np.array([i - j for i, j in zip(df.log_returns[1:], simulated_log_return)])
-    vol_error = np.array([i - j for i, j in zip(df.AtM[1:], simulated_atm_vol)])
-    abs_error = abs(error)
-    abs_vol_error = abs(vol_error)
+    if indicator != 'forecasting':
+        error = np.array([i - j for i, j in zip(df.log_returns[1:], simulated_log_return)])
+        vol_error = np.array([i - j for i, j in zip(df.AtM[1:], simulated_atm_vol)])
+        abs_error = abs(error)
+        abs_vol_error = abs(vol_error)
 
-    df.simulated_futures[1:] = simulated_future
-    df.simulated_AtMVol[1:] = simulated_atm_vol
-    df.simulated_log_returns[1:] = simulated_log_return
-    df.simulated_var[1:] = simulated_var
+        df.simulated_futures[1:] = simulated_future
+        df.simulated_AtMVol[1:] = simulated_atm_vol
+        df.simulated_log_returns[1:] = simulated_log_return
+        df.simulated_var[1:] = simulated_var
 
-    df.error[1:] = error
-    df.abs_error[1:] = abs_error
-    df.vol_error[1:] = vol_error
-    df.abs_vol_error[1:] = abs_vol_error
+        df.error[1:] = error
+        df.abs_error[1:] = abs_error
+        df.vol_error[1:] = vol_error
+        df.abs_vol_error[1:] = abs_vol_error
 
-    mean_abs_error = df.abs_error.mean()
-    return mean_abs_error
+        mean_abs_error = df.abs_error.mean()
+        return mean_abs_error
+
+    else:
+        df_columns = ['Futures', 'AtM', 'Var', 'log_returns']
+        df_fore = pd.DataFrame(np.zeros(shape = (100,4)),columns=df_columns)
+
+        df_fore.Futures[0:] = simulated_future
+        df_fore.AtM[0:] = simulated_atm_vol
+        df_fore.Var[0:] = simulated_var
+        df_fore.log_returns[0:] = simulated_log_return
+
+        plt.figure('Futures')
+        plt.plot(simulated_future)
+        plt.figure('AtM')
+        plt.plot(simulated_atm_vol)
+        plt.figure('Var')
+        plt.plot(simulated_var)
+        plt.figure('Log Returns')
+        plt.plot(simulated_log_return)
+
+
+        return df_fore
 
 
 def simulated_stochastic(length):
     factor = [random.random() for i in range(length-1)]
     factor_inv = np.array([norm.ppf(i) for i in factor])
     return factor_inv
-
 
 
 if __name__ == '__main__':
@@ -139,14 +162,30 @@ if __name__ == '__main__':
     cons = [{'type': 'ineq', 'fun': lambda x: x - 0},
             {'type': 'ineq', 'fun': lambda x: x - 0}]
 
-    result = optimize.minimize(calc, initial_guess, args=(df.copy(True), log_mean, df.stochastic_factor[2:]),
+    result = optimize.minimize(calc, initial_guess, args=(df.copy(True), log_mean, df.stochastic_factor[2:], 'observation'),
                                constraints=cons)
 
-    calc(result.x, df, log_mean, df.stochastic_factor[2: ])
-
+    calc(result.x, df, log_mean, df.stochastic_factor[2:], 'observation')
+    print(result.x)
     # df.plot(y='error')
     # df1, back_test = calc(result, df1, 0)
 
     stochastic = simulated_stochastic(len(df1) - 1)
 
-    calc(result.x, df1, log_mean, stochastic)
+    calc(result.x, df1, log_mean, stochastic, 'backtesting')
+
+    stochastic_forecasting = simulated_stochastic(100)
+
+    df_fore = calc(result.x, df2, log_mean, stochastic_forecasting, 'forecasting')
+
+
+    file_name = ('futures.xlxs')
+    with open(file_name, 'w') as f:
+        book = xl.Book(file_name)
+        book.activate()
+        sheet = book.sheets[0]
+        sheet.range('A1').value = df_fore
+        book.save()
+        book.close()
+
+    plt.show()
