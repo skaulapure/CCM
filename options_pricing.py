@@ -80,7 +80,7 @@ def plot(s, v, c, p, straddle):
     return
 
 
-def simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K, r, d):
+def simulation_lists(simulations, r, d):
     c = []
     p = []
     fut = []
@@ -88,6 +88,7 @@ def simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K,
     straddle = []
 
     for i in range(0, simulations):
+        var, future, log_return, atm_vol, log_mean, K = ext()
         S, v = cal(var, future, log_return, atm_vol, log_mean)
         fut.append(S)
         vol.append(v)
@@ -103,10 +104,16 @@ def simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K,
     df_fore.Call[0:] = c
     df_fore.Put[0:] = p
     df_fore.Straddle[0:] = straddle
-
-    df_fore.to_csv('futures_options.csv')
+    imp(df_fore)
     plot(fut, vol, c, p, straddle)
 
+    return
+
+
+def imp(df_fore):
+    df_fore = df_fore.sort_values(by='Futures', ascending=1)
+    df_fore.to_csv('futures_options.csv')
+    df_fore.describe().to_csv('futures_options.csv', mode='a', header=False)
     return
 
 
@@ -119,7 +126,6 @@ def ext():
     atm_vol = df_fore.AtM[0]
     future = df_fore.Futures[0]  # Stock price
     K = df_fore.Futures[0]  # Strike price
-    print(K)
     log_mean = df_fore.log_returns.mean()
     return var, future, log_return, atm_vol, log_mean, K
 
@@ -128,8 +134,7 @@ def main():
     r = 0.0075  # Riskfree interest rate
     d = 0.00  # Dividend yield
     simulations = 100
-    var, future, log_return, atm_vol, log_mean, K = ext()
-    simulation_lists(simulations, var, future, log_return, atm_vol, log_mean, K, r, d)
+    simulation_lists(simulations, r, d)
     plt.show()
 
     return
