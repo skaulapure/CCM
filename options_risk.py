@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 import profile
+import seaborn as sns
+from pymongo import MongoClient
+from scipy import optimize
 
 
 # Pricing engine module that calculates Option prices and Greeks with black scholes
@@ -21,9 +24,182 @@ import profile
 # v - Volatility
 """
 
+class GARCH(object):
+    def __init__(self, gamma, alpha):
+        super(GARCH, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.beta = 1 - alpha
+
+    def step(self, log_return, previous_var):
+        return self.gamma + self.alpha*log_return**2 + self.beta*previous_var
+
+
+class SimulationEngine(object):
+    def __init__(self, iteration):
+        super(SimulationEngine, self).__init__()
+        self.iteration = iteration
+        self.simulation_result = []
+        self.data = {}
+        self.log_mean = None
+        self.gamma = 0
+        self.alpha = 0
+        self.beta = None
+        self.stochastic_factors = []
+
+    def data_call(self, start_date, end_date):
+        # Call data do the calculation
+        connection = MongoClient()
+        db = connection.ccm
+        data = list(db.monte_carlo.find({}, {'_id': 0, 'Future': 1, 'AtM': 1, 'Date': 1}).sort('Date'))
+        df_columns = ['Date', 'Future', 'AtM', 'log_returns', 'AtM_Var']
+        df = pd.DataFrame(data, columns=df_columns)
+        df.set_index('Date', inplace=True)
+        df = df.loc[start_date:end_date]
+        df.log_returns = np.log(df.Future / df.Future.shift())
+        df.AtM_Var = df.AtM * df.AtM
+        df.Norm_AtM_Vol = df.AtM / 16
+        self.log_mean = log_mean = df.log_returns.mean()
+        df.stochastic_factor = stochastic_factor = (df.log_returns - log_mean) / df.Norm_AtM_Vol
+        self.data = df
+        self.stochastic_factors = stochastic_factor
+
+        #self.data = {}
+        #self.log_mean = None
+
+    def optimization(self):
+        initial_guess = np.array([0, 0])
+
+        cons = [{'type': 'ineq', 'fun': lambda x: x - 0},
+                {'type': 'ineq', 'fun': lambda x: x - 0}]
+
+        result = optimize.minimize(self.error_finding, initial_guess,
+                                   args=(self.data['log_returns']), constraints=cons)
+        self.gamma, self.alpha = result.x
+        self.beta = 1 - self.alpha
+        return
+
+    @staticmethod
+    def calc(guess, log_mean, stochastic_factors, future, atm_vol, log_return, var):
+        gamma = guess[0]
+        alpha = guess[1]
+
+        result = \
+            {
+                'Date': [],
+                'future': [future],
+                'atm_vol': [atm_vol],
+                'call': [],
+                'put': [],
+                'straddle': []
+            }
+
+        simulated_log_return = [log_return, ]
+
+        garch = GARCH(gamma, alpha)
+
+        for stochastic in stochastic_factors:
+            var = garch.step(log_return, var)
+            atm_vol = np.sqrt(var)
+            if np.isnan(atm_vol):
+                return np.inf
+            log_return = log_mean + stochastic * atm_vol / 16
+            future = future * np.exp(log_return)
+
+            simulated_log_return.append(log_return)
+
+            result['future'].append(future)
+            result['atm_vol'].append(atm_vol)
+            #result['call'].append(call)
+            #result['put'].append(put)
+            #result['straddle'].append(call + put)
+
+        return result, simulated_log_return
+
+    def error_finding(self, guess, log_returns):
+        r, simulated_returns = self.calc(guess, self.log_mean, self.stochastic_factors,
+                                         self.data['Future'][1], self.data['AtM'][1], log_returns, self.data['AtM_Var'][1])
+        error = np.array([i - j for i, j in zip(log_returns[1:], simulated_returns)])
+        abs_error = abs(error)
+        mean_abs_error = np.mean(abs_error)
+        return mean_abs_error
+
+    def fin(self):
+        for i in range(self.iteration):
+            stoc_factors = [norm.ppf(random.random()) for i in range(100 - 1)]
+            guess = [self.gamma, self.alpha]
+            r, s = self.calc(guess, self.log_mean, stoc_factors, self.data['Future'][-1],
+                             self.data['AtM'][-1], self.data['log_return'][-1], self.data['AtM_Var'][-1])
+            self.simulation_result.append(r)
+
+    @staticmethod
+    def calcualte_risk(instruments, simulation):
+        output = \
+            {
+                'Future': [],
+                'C@1000': [],
+                'P@900': [],
+                'Straddle': [],
+                'Total': [],
+            }
+
+        for i, fut, vol in enumerate(zip(simulation['future'], simulation['atm_vol'])):
+            position_value = 0
+            position_delta = 0
+            for instrument in instruments:
+                qty = instrument['Qty']
+                if instrument['Type'] == 'F':
+                    # Do something
+                    position_value += fut * qty
+                    position_delta += instrument['Qty']
+                    output['Future'].append(fut * qty)
+
+                if instrument['Type'] == 'C':
+                    if not instrument.get('VolMulitplier'):
+                        instrument['VolMultiplier'] = instrument['Vol'] / vol
+                    if instrument['DtE'] - i < 0:
+                        pass
+                    call_value = BlackScholes('C', fut, instrument['Strike'], (instrument['DtE'] - i) / 252.0,
+                                              0.0075, 0, vol * instrument['VolMultiplier'])
+                    position_value += call_value * qty
+                    output['C@1000'].append(call_value * qty)
+
+                if instrument['Type'] == 'P':
+                    if not instrument.get('VolMulitplier'):
+                        instrument['VolMultiplier'] = instrument['Vol'] / vol
+                    if instrument['DtE'] - i < 0:
+                        pass
+                    put_value = BlackScholes('P', fut, instrument['Strike'], (instrument['DtE'] - i) / 252.0,
+                                             0.0075, 0, vol * instrument['VolMultiplier'])
+                    position_value += put_value * qty
+                    output['P@900'].append(put_value * qty)
+
+                if instrument['Type'] == 'S':
+                    pass
+
+                output['Total'].append(position_value)
+        return output
+
+    def call_risk(self):
+        instruments = \
+            [
+                dict(Name='Future', Type='F', Qty=3),
+                dict(Name='C@1000', Type='C', Strike=1000, Vol=0.4, DtE=21, Qty=1),
+                dict(Name='P@900', Type='P', Strike=900, Vol=0.33, DtE=22, Qty=-2),
+            ]
+        self.calcualte_risk(instruments, self.simulation_result[0])
+
+    def show_result(self):
+        for i in self.simulation_result:
+            plt.plot(i['future'])
+            plt.plot(i['atm_vol'])
+            plt.plot(i['call'])
+            plt.plot(i['put'])
+            plt.plot(i['straddle'])
+        # plotting
+
 
 def BlackScholes(CallPutFlag, S, K, T, r, d, v):
-    #print(T)
     d1 = (math.log(float(S) / K) + ((r - d) + v * v / 2.) * float(T)) / (v * math.sqrt(float(T)))
     d2 = d1 - v * math.sqrt(T)
     if CallPutFlag == 'c':
@@ -32,115 +208,8 @@ def BlackScholes(CallPutFlag, S, K, T, r, d, v):
         return K * math.exp(-r * T) * norm.cdf(-d2) - S * math.exp(-d * T) * norm.cdf(-d1)
 
 
-def simulated_stochastic(length):
-    factor = [random.random() for i in range(length-1)]
-    factor_inv = np.array([norm.ppf(i) for i in factor])
-    return factor_inv
-
-
-def cal(var, future, log_return, log_mean, fut, vol, i, c, p, K, r, d, straddle): #, c_in, p_in):
-
-    gamma = 0.00031575
-    alpha = 0.00690033
-    beta = 1 - alpha
-
-    t1 = 100
-
-    stoc_factors = simulated_stochastic(t1)
-
-#    for stochastic in stoc_factors:
-    for j in range(1, len(stoc_factors)+1):
-
-        var = gamma + alpha * log_return ** 2 + beta * var
-
-        atm_vol = np.sqrt(var)
-
-        if np.isnan(atm_vol):
-            return np.inf
-
-        log_return = log_mean + stoc_factors[j-1] * atm_vol / 16
-
-        future = future * np.exp(log_return)
-
-        fut[i, j] = future
-        vol[i, j] = atm_vol
-        c[i, j] = BlackScholes('c', fut[i, j], K, (100 - j)/252.0, r, d, vol[i,j])
-        p[i, j] = BlackScholes('p', fut[i, j], K, (100 - j)/ 252.0, r, d, vol[i, j])
-        straddle[i, j] = c[i,j] + p[i, j]
-
-    return fut, vol, c, p, straddle
-
-
-def plot(fut, vol, c, p, straddle):
-    plt.figure('Futures')
-    for i in fut:
-        plt.plot(i)
-
-    plt.figure('Volatility')
-    for i in vol:
-        plt.plot(i)
-
-    plt.figure('Call')
-    for i in c:
-        plt.plot(i)
-
-    plt.figure('Put')
-    for i in p:
-        plt.plot(i)
-
-    plt.figure('Straddle')
-    for i in straddle:
-        plt.plot(i)
-    return
-
-
-def simulation_lists(simulations, r, d, var, future, log_return, atm_vol, log_mean, K): #, c_in, p_in):
-    duration = 100
-    c = np.zeros(shape=(simulations, duration))
-    p = np.zeros(shape=(simulations, duration))
-    fut = np.zeros(shape=(simulations, duration))
-    vol = np.zeros(shape=(simulations, duration))
-    straddle = np.zeros(shape=(simulations, duration))
-
-    for i in range(0, simulations):
-
-        fut[i, 0] = future
-        vol[i, 0] = atm_vol
-        c[i, 0] = BlackScholes('c', fut[i, 0], K, 100/252.0, r, d, vol[i,0])
-        p[i, 0] = BlackScholes('p', fut[i, 0], K, 100 / 252.0, r, d, vol[i, 0])
-        straddle[i, 0] = c[i, 0] + p[i, 0]
-        fut, vol, c, p, straddle = cal(var, fut[i,0], log_return, log_mean, fut, vol, i, c, p, K, r, d, straddle) #, c_in, p_in)
-
-    plot(fut, vol, c, p, straddle)
-
-    return
-
-
-def ext():
-    file_name = 'futures1.xlsx'
-    df_fore = pd.read_excel(file_name)
-
-    var = df_fore.Var[0]  # Volatility
-    log_return = df_fore.log_returns[0]
-    atm_vol = df_fore.AtM[0]
-    future = df_fore.Futures[0]  # Stock price
-    K = df_fore.Futures[0]  # Strike price
-    log_mean = df_fore.log_returns.mean()
-    return var, future, log_return, atm_vol, log_mean, K
-
-
-def main():
-    r = 0.0075  # Riskfree interest rate
-    d = 0.00  # Dividend yield
-    simulations = 100
-  #  c_in = input('Enter call value: ')
- #   p_in = input('Enter put value: ')
-    var, future, log_return, atm_vol, log_mean, K = ext()
-    simulation_lists(simulations, r, d, var, future, log_return, atm_vol, log_mean, K) #, c_in, p_in)
-    print('done')
-    plt.show()
-
-    return
-
 if __name__ == "__main__":
-    main()
+    mod = SimulationEngine(5)
+    mod.data_call('2009-06-15', '2014-12-31')
+    mod.optimization()
+    plt.show()
